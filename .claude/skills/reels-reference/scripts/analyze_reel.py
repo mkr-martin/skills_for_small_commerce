@@ -1,4 +1,4 @@
-"""릴스 레퍼런스 분석 — 인스타 릴스 URL 1개 → output/레퍼런스/<yyyymmdd>_<slug>/ 폴더 + 원장 한 줄.
+"""릴스 레퍼런스 분석 — 인스타 릴스 URL 1개 → output_reels-reference/<yyyymmdd_hhmm>_<코드>/ 폴더 + 원장 한 줄.
 
 하는 일(순서대로):
   1. Gemini API 키 확인(없으면 친절한 문장으로 멈춘다 — 다운로드보다 먼저)
@@ -7,8 +7,8 @@
      (클로드가 반자동크롤러로 캡션·화면 텍스트를 읽어 파일로 저장 → --caption-file 로 재실행)
   3. Gemini 에 영상째 업로드(Files API) + 분석 지시 → JSON
   4. 건별 폴더에 원본.mp4 · thumb.jpg · 전사.md · 분석.md · analysis.json 저장
-  5. output/레퍼런스/원장.md 맨 아래에 한 줄 추가(표 전체를 다시 쓰지 않는다)
-  report.html 과 대시보드는 dashboard/make_dashboard.py 가 이 폴더의 md 로 만든다.
+  5. output_reels-reference/원장.md 맨 아래에 한 줄 추가(표 전체를 다시 쓰지 않는다)
+  결과 확인은 폴더의 분석.md.
 
 실행(어느 폴더에서든 — 아래는 레포 맨 위 기준 경로):
   python3 .claude/skills/reels-reference/scripts/analyze_reel.py "<릴스 URL>"
@@ -34,13 +34,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]   # 레포 맨 위(shared/ · 브랜드_SSOT.md · .env) — 루트 CLAUDE.md §5 표준 머리
 sys.path.insert(0, str(ROOT))
 from shared import env, ledger, store_profile  # noqa: E402  .env·원장·브랜드_SSOT.md 읽기는 shared 한 곳
-from shared.paths import output_dir  # noqa: E402  결과물 폴더 위치는 shared/paths.py 한 곳
+from shared.paths import run_dir, skill_root  # noqa: E402  결과물 폴더 위치는 shared/paths.py 한 곳
 
 # ── 위치 ──────────────────────────────────────────────────────────
 SKILL_DIR = Path(__file__).resolve().parent.parent          # .claude/skills/reels-reference/
 PATTERN_DOC = SKILL_DIR / "패턴집.md"
 TAG_AXES = SKILL_DIR / "tag_axes.json"
-TAB_DIR_NAME = "레퍼런스"
+SKILL_NAME = "reels-reference"
 LEDGER_NAME = "원장.md"
 PATTERN_START = "<!-- PATTERN-BLOCK-START -->"
 PATTERN_END = "<!-- PATTERN-BLOCK-END -->"
@@ -124,19 +124,6 @@ def safe_slug(text: str) -> str:
     return s[:40] or "reel"
 
 
-def make_case_dir(tab_dir: Path, date_str: str, slug: str) -> Path:
-    """output/레퍼런스/<yyyymmdd>_<slug>/ — 이미 분석이 끝난 폴더면 _2, _3 … 새로. 덜 끝난 폴더는 이어 쓴다
-    (영상 받기 실패 → 캡션 기준으로 다시 부를 때 같은 폴더를 쓰게)."""
-    base = f"{date_str}_{slug}"
-    n = 1
-    while True:
-        d = tab_dir / (base if n == 1 else f"{base}_{n}")
-        if not (d / "분석.md").exists():
-            d.mkdir(parents=True, exist_ok=True)
-            return d
-        n += 1
-
-
 # ── 3. 영상 받기(yt-dlp + 내 크롬 쿠키) ──────────────────────────
 def _ytdlp(args: list, timeout: int) -> subprocess.CompletedProcess:
     cmd = [sys.executable, "-m", "yt_dlp", *args]
@@ -183,7 +170,7 @@ def _download_fail_msg(stderr: str) -> str:
 
 
 def save_thumbnail(info: dict, case_dir: Path) -> None:
-    """썸네일 1장 → thumb.jpg (대시보드 카드 사진). 실패해도 분석은 계속."""
+    """썸네일 1장 → thumb.jpg. 실패해도 분석은 계속."""
     url = info.get("thumbnail")
     if not url:
         return
@@ -498,8 +485,7 @@ def run(argv: list | None = None) -> int:
     code = parse_reel_url(args.url)
     slug = safe_slug(args.slug or code)
     today = dt.datetime.now()
-    tab_dir = output_dir(TAB_DIR_NAME)
-    case_dir = make_case_dir(tab_dir, today.strftime("%Y%m%d"), slug)
+    case_dir = run_dir(SKILL_NAME, slug)               # output_reels-reference/<yyyymmdd_hhmm>_<slug>/
     print(f"[폴더] {case_dir.relative_to(ROOT)}", file=sys.stderr)
 
     store_text = store_profile.read().strip() if store_profile.is_filled() else None   # 템플릿 그대로면 None → 일반 제안
@@ -552,7 +538,7 @@ def run(argv: list | None = None) -> int:
         if "API key" in msg or "API_KEY" in msg or "PERMISSION_DENIED" in msg:
             msg = "Gemini 가 키를 받아주지 않았어요 — 키를 새로 만들어 \"키 넣어줘\" 로 덮어써 주세요."
         raise Stop(f"분석에 실패했어요: {msg[:400]}\n  (받은 영상은 {case_dir} 에 남아 있어요 — "
-                   "다시 실행하면 같은 폴더를 이어 씁니다)", EXIT_ANALYZE) from None
+                   "다시 실행하면 새 폴더가 만들어집니다)", EXIT_ANALYZE) from None
 
     if not video:                                      # 영상을 못 봤으면 씬·말 전사는 있을 수 없다(지어낸 것)
         analysis["scenes"] = []
@@ -564,7 +550,7 @@ def run(argv: list | None = None) -> int:
     write_analysis(case_dir, analysis, url=args.url, mode_label=mode_label, has_store=bool(store_text))
 
     title = " · ".join(x for x in (uploader, analysis.get("title")) if x) or slug
-    ledger_path = tab_dir / LEDGER_NAME               # 열 5개 고정 — dashboard/README.md 규격
+    ledger_path = skill_root(SKILL_NAME) / LEDGER_NAME   # 열 5개 고정
     try:
         ledger.append(ledger_path, {
             "날짜": today.strftime("%Y-%m-%d"), "계정·영상": cell(title), "URL": args.url,

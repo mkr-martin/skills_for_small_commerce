@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """매대 점검 — 재고표.csv 와 매대표.csv 를 맞대어 이상한 칸을 찾는다.
 
-사용: python3 .claude/skills/shelf-check/scripts/shelf_check.py output/매대/재고표.csv output/매대/<yyyymmdd>/매대표.csv [--low N]
-표준 라이브러리만 쓴다. 인터넷·키 없음. 읽기만 하고 결과를 output/매대/<날짜>/결과.csv 로 저장한다.
+사용: python3 .claude/skills/shelf-check/scripts/shelf_check.py [재고표.csv] [매대표.csv] [--low N]
+  인자를 안 주면 재고표 = output_shelf-check/재고표.csv, 매대표 = output_shelf-check/ 아래 가장 최근 회차 폴더의 매대표.csv.
+표준 라이브러리만 쓴다. 인터넷·키 없음. 읽기만 하고 결과를 매대표와 같은 회차 폴더의 결과.csv 로 저장한다.
 """
 import argparse
 import csv
@@ -10,13 +11,12 @@ import re
 import sys
 import unicodedata
 from collections import OrderedDict
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]  # scripts → shelf-check → skills → .claude → 루트 (루트 CLAUDE.md §5 표준 머리)
 sys.path.insert(0, str(ROOT))
 from shared import store_profile  # noqa: E402
-from shared.paths import output_dir, show_path  # noqa: E402
+from shared.paths import skill_root, show_path  # noqa: E402
 
 DEFAULT_LOW = 10
 
@@ -258,9 +258,15 @@ def render(channels, results, low, has_mark_col):
     return "\n".join(L)
 
 
-def save_csv(results, base_dir=None):
-    """결과.csv → <base_dir>/<yyyymmdd>/결과.csv (기본 base_dir = output/매대)."""
-    d = Path(base_dir or output_dir("매대")) / date.today().strftime("%Y%m%d")
+def latest_shelf_csv():
+    """output_shelf-check/ 아래 가장 최근 회차 폴더(yyyymmdd_hhmm — 이름순 = 시간순)의 매대표.csv. 없으면 None."""
+    found = sorted(p for p in skill_root("shelf-check").glob("*/매대표.csv") if p.is_file())
+    return found[-1] if found else None
+
+
+def save_csv(results, out_dir):
+    """결과.csv → <out_dir>/결과.csv (out_dir = 매대표가 든 회차 폴더)."""
+    d = Path(out_dir)
     d.mkdir(parents=True, exist_ok=True)
     path = d / "결과.csv"
     cols = ["채널", "제품", "색", "사이즈", "상태", "재고수량", "판매가", "기준가", "가격", "메모"]
@@ -276,10 +282,17 @@ def save_csv(results, base_dir=None):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="재고표와 매대표를 맞대어 이상한 칸을 찾습니다.")
-    ap.add_argument("재고표")
-    ap.add_argument("매대표")
+    ap.add_argument("재고표", nargs="?", help="기본: output_shelf-check/재고표.csv")
+    ap.add_argument("매대표", nargs="?", help="기본: output_shelf-check/ 아래 가장 최근 회차의 매대표.csv")
     ap.add_argument("--low", type=int, default=None, help="저재고 기준(기본: 브랜드_SSOT.md 값, 없으면 10)")
     a = ap.parse_args(argv)
+    if a.재고표 is None:
+        a.재고표 = str(skill_root("shelf-check") / "재고표.csv")
+    if a.매대표 is None:
+        latest = latest_shelf_csv()
+        if latest is None:
+            sys.exit("매대표.csv 가 없어요. 먼저 `python3 .claude/skills/shelf-check/scripts/fetch_shelf.py` 로 만들어 주세요.")
+        a.매대표 = str(latest)
     low = a.low if a.low is not None else load_low_default()
     _, stock_rows = read_csv(a.재고표, ["제품", "색", "사이즈", "상태"])
     heads, shelf_rows = read_csv(a.매대표, ["채널", "제품", "색", "사이즈", "재고수량"])
@@ -290,7 +303,7 @@ def main(argv=None):
         (r.get("품절표시(Y/N)") or r.get("품절표시")) for r in shelf_rows)
     channels, results = analyze(stock_rows, shelf_rows, low, has_mark)
     print(render(channels, results, low, has_mark))
-    path = save_csv(results)
+    path = save_csv(results, Path(a.매대표).parent)
     print(f"\n저장: {show_path(path)}")
 
 

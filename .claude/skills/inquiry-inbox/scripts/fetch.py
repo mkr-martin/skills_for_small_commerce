@@ -1,4 +1,4 @@
-"""미답변 문의 모으기 — 채널 API 로 읽어 output/문의/문의함.csv 맨 아래에 덧붙인다. (읽기만 · 고객에게 아무것도 안 보냄)
+"""미답변 문의 모으기 — 채널 API 로 읽어 output_inquiry-inbox/문의함.csv 맨 아래에 덧붙인다. (읽기만 · 고객에게 아무것도 안 보냄)
 
     python3 .claude/skills/inquiry-inbox/scripts/fetch.py                  # 키가 있는 채널 전부 · 최근 7일
     python3 .claude/skills/inquiry-inbox/scripts/fetch.py --days 14        # 최근 14일
@@ -27,7 +27,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="미답변 문의를 문의함.csv 로 모은다")
     ap.add_argument("--days", type=int, default=7, help="며칠 전 문의까지 (기본 7)")
     ap.add_argument("--channel", choices=sorted(FETCH), help="이 채널만")
-    ap.add_argument("--dir", default=None, help="문의함 폴더 (기본 = 레포 맨 위 output/문의/)")
+    ap.add_argument("--dir", default=None, help="문의함 폴더 (기본 = 레포 맨 위 output_inquiry-inbox/)")
     ap.add_argument("--cafe24-boards", action="store_true", help="카페24 게시판 번호 목록만 출력")
     args = ap.parse_args()
 

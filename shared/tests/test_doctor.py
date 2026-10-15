@@ -68,9 +68,9 @@ class DoctorTest(unittest.TestCase):
         self.assertIn((2, doctor.BAD), marks(doctor.check("inquiry-inbox", FakeProbe())))
         shelf = marks(doctor.check("shelf-check", FakeProbe(stock=True)))
         self.assertNotIn((2, doctor.BAD), shelf)          # ④ 는 키 없이 csv 로도 된다
-        self.assertIn((5, doctor.OK), shelf)              # output/매대/재고표.csv
+        self.assertIn((5, doctor.OK), shelf)              # output_shelf-check/재고표.csv
         texts = [t for _, _, t, _ in doctor.check("shelf-check", FakeProbe())]
-        self.assertTrue(any("output/매대/재고표.csv" in t for t in texts))
+        self.assertTrue(any("output_shelf-check/재고표.csv" in t for t in texts))
 
     def test_ip_note_only_for_ip_channels(self):
         def ip_rows(chs):

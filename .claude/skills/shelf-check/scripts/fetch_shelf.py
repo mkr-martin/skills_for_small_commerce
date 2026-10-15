@@ -2,12 +2,12 @@
 """매대 가져오기 — 채널 API 에서 상품·옵션·재고를 읽어 매대표.csv 를 만든다. 읽기만 한다.
 
 사용:
-  (S = .claude/skills/shelf-check/scripts · 결과물은 어느 폴더에서 실행해도 레포 맨 위 output/매대/ 에 쓴다)
-  처음 한 번(상품이 바뀌었을 때도):  python3 $S/fetch_shelf.py --map      -> output/매대/매핑표.csv
-  매일:                              python3 $S/fetch_shelf.py            -> output/매대/<yyyymmdd>/매대표.csv
-  그다음:                            python3 $S/shelf_check.py output/매대/재고표.csv output/매대/<yyyymmdd>/매대표.csv
+  (S = .claude/skills/shelf-check/scripts · 결과물은 어느 폴더에서 실행해도 레포 맨 위 output_shelf-check/ 에 쓴다)
+  처음 한 번(상품이 바뀌었을 때도):  python3 $S/fetch_shelf.py --map      -> output_shelf-check/매핑표.csv
+  매일:                              python3 $S/fetch_shelf.py            -> output_shelf-check/<yyyymmdd_hhmm>/매대표.csv
+  그다음:                            python3 $S/shelf_check.py            (재고표·가장 최근 매대표를 알아서 씀)
 
-- 채널 옵션(예: "색상:블랙 / 사이즈:M")을 재고표의 (제품·색·사이즈)에 잇는 장부 = output/매대/매핑표.csv.
+- 채널 옵션(예: "색상:블랙 / 사이즈:M")을 재고표의 (제품·색·사이즈)에 잇는 장부 = output_shelf-check/매핑표.csv.
   --map 이 자동 추정으로 채우고, 사장님이 확인 칸에 Y(쓰기)·N(빼기)를 적는다.
 - 평소 실행은 확인=Y 줄만 매대표에 넣는다. 매핑표에 없는 옵션은 넣지 않고 🔵 새 옵션으로 알린다.
 - 한 채널에 같은 칸(제품·색·사이즈)을 여러 상품으로 올렸으면(예: 일반 판매 + 공동구매) 그 상품들은 채널 이름에
@@ -20,21 +20,20 @@ import argparse
 import csv
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]  # scripts → shelf-check → skills → .claude → 루트 (루트 CLAUDE.md §5 표준 머리)
 sys.path.insert(0, str(ROOT))
 from shared import store_profile  # noqa: E402
-from shared.paths import output_dir, show_path  # noqa: E402
+from shared.paths import run_dir, show_path, skill_root  # noqa: E402
 from shared.channels import cafe24, coupang, naver  # noqa: E402
 
 import shelf_check  # noqa: E402  같은 폴더 — csv 읽기·숫자 읽기를 그대로 쓴다
 
 SHELF_COLS = ["채널", "제품", "색", "사이즈", "재고수량", "노출(Y/N)", "판매중(Y/N)", "품절표시(Y/N)", "판매가"]
 MAP_COLS = ["채널", "상품번호", "채널 상품명", "채널 옵션명", "제품", "색", "사이즈", "확인"]
-MAP_PATH = output_dir("매대", "매핑표.csv")
-STOCK_PATH = output_dir("매대", "재고표.csv")   # 사장님이 채우는 재고표 — 양식 templates/재고표.csv
+MAP_PATH = skill_root("shelf-check") / "매핑표.csv"
+STOCK_PATH = skill_root("shelf-check") / "재고표.csv" # 사장님이 채우는 재고표 — 양식 templates/재고표.csv
 PRODUCT_LABEL_LEN = 20                         # 채널 이름에 붙이는 상품명 앞 글자 수
 
 # (shared/channels 모듈 이름, 매대표에 적을 채널 이름)
@@ -364,7 +363,7 @@ def run_daily(listings):
     if not shelf:
         sys.exit(f"매핑표에 확인=Y 이고 제품·색·사이즈가 다 찬 줄이 없어요 — {show_path(MAP_PATH)} 부터 채워 주세요"
                  f"(확인 안 된 줄 {pending}건 · 새 옵션 {len(new)}건).")
-    out = output_dir("매대", date.today().strftime("%Y%m%d"), "매대표.csv")
+    out = run_dir("shelf-check") / "매대표.csv"
     write_csv(out, SHELF_COLS, shelf)
     print(f"\n매대표: {show_path(out)}  ({len(shelf)}줄)")
     if new:
@@ -381,13 +380,13 @@ def run_daily(listings):
             print(f"   - {d}")
     if any(r["재고수량"] == "" for r in shelf):
         print("\n※ 재고수량을 못 받은 옵션(카페24 '재고 사용 안 함' 등)은 칸을 비웠어요(점검에서 ❓로 보입니다).")
-    print(f"\n다음: python3 .claude/skills/shelf-check/scripts/shelf_check.py {show_path(STOCK_PATH)} {show_path(out)}")
+    print(f"\n다음: python3 .claude/skills/shelf-check/scripts/shelf_check.py")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="채널 API 에서 매대표.csv 를 만듭니다(읽기만).")
-    ap.add_argument("--map", action="store_true", help="매핑표(output/매대/매핑표.csv)를 만들거나 새 옵션을 덧붙입니다")
-    ap.add_argument("--stock", default=str(STOCK_PATH), help="--map 때 추정에 쓸 재고표(기본: output/매대/재고표.csv)")
+    ap.add_argument("--map", action="store_true", help="매핑표(output_shelf-check/매핑표.csv)를 만들거나 새 옵션을 덧붙입니다")
+    ap.add_argument("--stock", default=str(STOCK_PATH), help="--map 때 추정에 쓸 재고표(기본: output_shelf-check/재고표.csv)")
     a = ap.parse_args(argv)
     listings, notes = fetch_all()
     for n in notes:

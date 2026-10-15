@@ -1,12 +1,12 @@
-"""원장.md — 결과물 폴더(output/<탭>/)의 마크다운 표 한 장. 맨 아래 한 줄 추가만 한다(전체 재작성 금지).
+"""원장.md — 스킬 결과물 폴더 맨 위(output_<스킬>/원장.md)의 마크다운 표 한 장. 맨 아래 한 줄 추가만 한다(전체 재작성 금지).
 
     from shared import ledger
-    from shared.paths import output_dir
-    ledger.append(output_dir("상세페이지", "원장.md"), {"날짜": "2026-10-14", "가게": "하루양말", ...})
-    rows = ledger.read(output_dir("상세페이지", "원장.md"))   # → [{"날짜": …, "가게": …}, …]
+    from shared.paths import skill_root
+    ledger.append(skill_root("detail-page") / "원장.md", {"날짜": "2026-10-14", "가게": "하루양말", ...})
+    rows = ledger.read(skill_root("detail-page") / "원장.md")   # → [{"날짜": …, "가게": …}, …]
 
 세션에서 한 줄 붙일 때(스크립트 밖) — 같은 append 를 터미널로:
-    python3 shared/ledger.py output/상세페이지/원장.md '{"날짜": "2026-10-14", "가게": "하루양말", ...}'
+    python3 shared/ledger.py output_detail-page/원장.md '{"날짜": "2026-10-14", "가게": "하루양말", ...}'
 
 - 파일이 없으면: 첫 row 의 키 순서로 헤더를 만들고 한 줄 쓴다.
 - 파일이 있으면: 기존 헤더의 열 순서를 지킨다. 헤더에 없는 키가 오면 오류(열 고정).

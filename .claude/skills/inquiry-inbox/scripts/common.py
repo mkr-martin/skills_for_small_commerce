@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]   # scripts → inquiry-inbox → skills → .claude → 루트 (루트 CLAUDE.md §5 표준 머리)
 sys.path.insert(0, str(ROOT))
-from shared.paths import output_dir  # noqa: E402
+from shared.paths import skill_root  # noqa: E402
 
 KST = timezone(timedelta(hours=9))
 
@@ -68,8 +68,8 @@ def mask_name(name) -> str:
 
 # ---------------------------------------------------------------- 문의함.csv
 def inbox_paths(work_dir: str | None) -> tuple:
-    """기본 = 레포 맨 위 output/문의/(.gitignore 됨). --dir 로 바꿀 수 있다."""
-    d = Path(work_dir) if work_dir else output_dir("문의")
+    """기본 = output_inquiry-inbox/(스킬 결과물 폴더 맨 위 · .gitignore 됨). --dir 로 바꿀 수 있다."""
+    d = Path(work_dir) if work_dir else skill_root("inquiry-inbox")
     return d, d / INBOX_NAME
 
 

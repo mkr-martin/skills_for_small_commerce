@@ -270,13 +270,13 @@ class MappingFlow(unittest.TestCase):
             self.assertEqual(st[("쿠팡", "검정", "M")], "low_stock")
 
     def test_map_file_roundtrip(self):
-        """매핑표는 output/매대/ 에 쓴다 — 테스트는 MAP_PATH 를 임시 폴더로 바꿔 끼운다(레포 output/ 을 건드리지 않게)."""
-        self.assertEqual(fs.MAP_PATH.parts[-3:], ("output", "매대", "매핑표.csv"))
+        """매핑표는 스킬 결과 폴더 맨 위에 쓴다 — 테스트는 MAP_PATH 를 임시 폴더로 바꿔 끼운다(레포 결과 폴더를 건드리지 않게)."""
+        self.assertEqual(fs.MAP_PATH.parts[-2:], ("output_shelf-check", "매핑표.csv"))
         listings = all_listings()
         rows, _, _ = fs.build_map(listings, [], STOCK, GROUPS)
         orig = fs.MAP_PATH
         with tempfile.TemporaryDirectory() as d:
-            fs.MAP_PATH = Path(d) / "매대" / "매핑표.csv"
+            fs.MAP_PATH = Path(d) / "매핑표.csv"
             try:
                 fs.write_csv(fs.MAP_PATH, fs.MAP_COLS, rows)
                 back = fs.read_map()

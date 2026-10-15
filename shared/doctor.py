@@ -20,7 +20,7 @@ from pathlib import Path
 if __name__ == "__main__":   # 파일로 직접 실행 — 어느 폴더에서든 shared 를 찾게(루트 CLAUDE.md §5 표준 머리)
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from shared import env, store_profile  # noqa: E402
-from shared.paths import output_dir, repo_root  # noqa: E402
+from shared.paths import repo_root, skill_root  # noqa: E402
 
 OK, BAD, OPT = "✅", "❌", "⚪"
 CHROME_MIN = 144
@@ -33,7 +33,7 @@ IMPORT_NAME = {"pillow": "PIL", "google-genai": "google.genai", "yt-dlp": "yt_dl
 ONLY_FOR_CHANNEL = {"bcrypt": "naver"}
 CHANNELS = [("naver", "네이버"), ("coupang", "쿠팡"), ("cafe24", "카페24")]
 KEYS_FIX = "클로드에게 \"키 넣어줘\"(= python3 shared/setup_keys.py) · 발급 방법은 README '키 발급'"
-STOCK_CSV = ("매대", "재고표.csv")          # output/ 아래 — ④ 재고표 자리(fetch_shelf.STOCK_PATH 와 같은 곳)
+STOCK_SKILL, STOCK_CSV = "shelf-check", "재고표.csv"   # ④ 재고표 자리 = output_shelf-check/ 맨 위(장부)
 IP_CHANNELS = ("naver", "coupang")         # 호출 IP 허용 목록이 있는 채널 — 등록 여부는 API 를 불러 봐야 안다
 
 # 스킬별 점검 항목 — 순서 = 사용법.md 「설치법」 단계 번호(1부터). 항목 이름은 아래 CHECKS 의 키.
@@ -89,7 +89,7 @@ class Probe:
         return cafe24.token_path().exists()
 
     def stock_csv(self) -> bool:
-        return output_dir(*STOCK_CSV).is_file()
+        return (skill_root(STOCK_SKILL) / STOCK_CSV).is_file()
 
     def store_filled(self) -> bool:
         return store_profile.is_filled()
@@ -204,7 +204,7 @@ def _cafe24_login(pr: Probe, skill: str):
 
 
 def _stock_csv(pr: Probe, skill: str):
-    where = "/".join(("output",) + STOCK_CSV)
+    where = f"output_{STOCK_SKILL}/{STOCK_CSV}"
     if pr.stock_csv():
         return [(OK, f"재고표 있음({where})", "")]
     return [(BAD, f"재고표 없음({where})",
