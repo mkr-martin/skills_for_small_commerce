@@ -1,0 +1,16 @@
+{
+  "//": "반자동크롤러 — 내가 쓰던 크롬(Chrome 144+)에 클로드를 붙인다. 처음 한 번 chrome://inspect/#remote-debugging 에서 원격 디버깅을 켠다.",
+  "//2": "--no-usage-statistics · --no-performance-crux = 사용 통계·성능 데이터를 외부로 보내지 않는다",
+  "mcpServers": {
+    "chrome": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "chrome-devtools-mcp@latest",
+        "--autoConnect",
+        "--no-usage-statistics",
+        "--no-performance-crux"
+      ]
+    }
+  }
+}

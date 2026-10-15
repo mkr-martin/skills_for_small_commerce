@@ -1,0 +1,26 @@
+# 비밀값 — 절대 올리지 않는다
+.env
+.env.*
+!.env.example
+*.token.json
+token*.json
+*.tmp
+
+# 결과물 — 스킬이 만드는 것은 전부 output/ 한 폴더(가게 데이터가 실수로 올라가지 않게)
+output/
+# 안전망 — 가게 데이터 파일은 output/ 밖에 두어도 올라가지 않게
+문의함.csv
+재고표.csv
+매대표.csv
+매핑표.csv
+결과.csv
+원장.md
+# 스킬 안의 양식(templates/재고표.csv · 매대표.csv)은 예외로 올린다
+!/.claude/skills/shelf-check/templates/*.csv
+
+# 맥·파이썬 찌꺼기
+.DS_Store
+__pycache__/
+*.pyc
+.venv/
+venv/

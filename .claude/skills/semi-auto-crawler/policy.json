@@ -1,0 +1,167 @@
+{
+  "_": "반자동크롤러 정책 — (사이트 × 행동) 판정표. guard.py 가 읽어 판정한다. 사이트를 더하려면 sites 에 항목을 추가한다(위에 둔 항목이 먼저 걸린다).",
+  "version": 1,
+  "updated": "2026-10-14",
+  "actions": {
+    "read": "화면 읽기·수집 (부작용 0)",
+    "navigate": "이동·메뉴 클릭·탭 전환·검색 (되돌릴 수 있음)",
+    "fill": "일반 정보 입력 — 이름·설명·수량·기간처럼 시크릿이 아닌 값",
+    "secret": "토큰·비밀번호·API 키·계좌번호 입력 — ★ 전역 불변: 언제나 사람이 직접",
+    "irreversible": "삭제·결제·배포·대량발송·권한변경·주문확정 — 미리보기→사람 확정 후에만"
+  },
+  "invariants": [
+    "secret 은 어떤 사이트의 allow 에도 올 수 없다 (사람이 직접 입력)",
+    "irreversible 은 allow 에 올 수 없다 — confirm 또는 deny 만",
+    "모든 사이트 항목에 why 가 있어야 한다",
+    "host 항목은 점(.)을 포함한 실제 도메인이어야 한다 (빈 값·캐치올 금지)"
+  ],
+  "sites": [
+    {
+      "id": "cloudflare",
+      "allow": [
+        "read",
+        "navigate",
+        "fill"
+      ],
+      "confirm": [
+        "irreversible"
+      ],
+      "deny": [
+        "secret"
+      ],
+      "why": "도메인·저장공간 설정 화면. 메뉴 탐색과 이름·설명 입력은 적극 대행하되, 삭제·배포·과금 변경은 사람 확정.",
+      "host": [
+        "cloudflare.com"
+      ]
+    },
+    {
+      "id": "github",
+      "allow": [
+        "read",
+        "navigate",
+        "fill"
+      ],
+      "confirm": [
+        "irreversible"
+      ],
+      "deny": [
+        "secret"
+      ],
+      "why": "이슈·글 작성은 대행. 머지·릴리스·설정 변경은 사람 확정.",
+      "host": [
+        "github.com"
+      ]
+    },
+    {
+      "id": "cafe24_admin",
+      "allow": [
+        "read",
+        "navigate"
+      ],
+      "confirm": [],
+      "deny": [
+        "fill",
+        "secret",
+        "irreversible"
+      ],
+      "why": "쿠폰·상품·주문 일괄 변경은 클릭 한 번이 수백 명에게 나간다(쿠폰 대량 발급 같은 사고가 실제로 난다). 조회만 — 쓰기는 사람이 직접.",
+      "host": [
+        "cafe24.com"
+      ]
+    },
+    {
+      "id": "coupang_wing",
+      "allow": [
+        "read",
+        "navigate"
+      ],
+      "confirm": [],
+      "deny": [
+        "fill",
+        "secret",
+        "irreversible"
+      ],
+      "why": "가격·재고·정산이 걸린 화면. 조회만.",
+      "host": [
+        "wing.coupang.com",
+        "supplier.coupang.com"
+      ]
+    },
+    {
+      "id": "naver_seller",
+      "allow": [
+        "read",
+        "navigate"
+      ],
+      "confirm": [],
+      "deny": [
+        "fill",
+        "secret",
+        "irreversible"
+      ],
+      "why": "광고 예산·상품 가격은 즉시 돈이 나간다. 조회만.",
+      "host": [
+        "smartstore.naver.com",
+        "sell.smartstore.naver.com",
+        "searchad.naver.com"
+      ]
+    },
+    {
+      "id": "money",
+      "allow": [],
+      "confirm": [],
+      "deny": [
+        "read",
+        "navigate",
+        "fill",
+        "secret",
+        "irreversible"
+      ],
+      "why": "은행·결제. 접근 자체를 막는다.",
+      "host": [
+        "shinhan.com",
+        "shinhancard.com",
+        "kbstar.com",
+        "kbcard.com",
+        "wooribank.com",
+        "nonghyup.com",
+        "nhbank.com",
+        "ibk.co.kr",
+        "hanabank.com",
+        "toss.im",
+        "tosspayments.com",
+        "kiwoom.com",
+        "payjoa.co.kr",
+        "kftc.or.kr"
+      ]
+    }
+  ],
+  "default": {
+    "allow": [
+      "read",
+      "navigate"
+    ],
+    "confirm": [
+      "fill",
+      "irreversible"
+    ],
+    "deny": [
+      "secret"
+    ],
+    "why": "모르는 사이트 — 읽기·이동은 허용, 입력은 사람 확정, 시크릿은 사람 직접."
+  },
+  "_match": "host = 호스트명 suffix 매칭(정확히 같거나 .으로 끝남 — 경로 삽입·서브도메인 위장 차단). url_contains = path+query+fragment 부분일치(선택). 둘 다 있으면 AND.",
+  "pre_deny": {
+    "url_contains": [
+      "/logout",
+      "/signout",
+      "/sign-out",
+      "/sign_out",
+      "/log-out",
+      "/accounts/logout",
+      "/session/end",
+      "/auth/logout"
+    ],
+    "why": "로그아웃하면 이 도구의 전제(살아있는 로그인)가 사라진다. 사이트 규칙보다 먼저 검사한다. 경로형(슬래시 시작)만 쓴다 — 'logout' 같은 단어 조각은 ?q=logout·/help/how-to-logout 같은 정상 페이지 읽기까지 막는다."
+  }
+}
