@@ -339,8 +339,11 @@ def gemini_analyze(api_key: str, model: str, prompt: str, video: Path | None,
         if video:
             mime = mimetypes.guess_type(str(video))[0] or "video/mp4"
             print("[분석] 영상을 Gemini 에 올리는 중…", file=sys.stderr)
-            uploaded = client.files.upload(file=str(video),
-                                           config=types.UploadFileConfig(mime_type=mime))
+            # 경로가 아니라 파일 핸들로 올린다 — SDK 는 경로의 파일명을 HTTP 헤더에 넣는데 헤더는 ASCII 만 되므로
+            # 한글 파일명·폴더(원본.mp4 등)가 'ascii codec' 오류로 실패한다. 핸들이면 이름이 헤더에 안 실린다.
+            with open(video, "rb") as fh:
+                uploaded = client.files.upload(file=fh,
+                                               config=types.UploadFileConfig(mime_type=mime))
             waited = 0
             while uploaded.state and uploaded.state.name == "PROCESSING":
                 if waited >= FILE_WAIT_SEC:
