@@ -14,7 +14,7 @@ description: 상세페이지 분석 — 쇼핑몰 상세페이지 URL 하나를 
 결과물은 레포 맨 위 `output_detail-page/` 아래(경로는 `shared/paths.py` 한 곳에서만 정한다).
 ```
 output_detail-page/
-  원장.md                         ← 한 건 = 한 줄 (맨 위에 추가)
+  원장.md                         ← 한 건 = 한 줄 (맨 아래에 한 줄 추가 · 최신이 맨 아래)
   <yyyymmdd_hhmm>_<가게>/         ← 건 폴더 (run_dir 이 시각을 붙여 만든다)
     수집.json                     ← 1단계 결과
     원본/01.jpg 02.webp …         ← 2단계
@@ -66,7 +66,7 @@ python3 $S/scripts/slice.py <건>/원본 --out <건>/조각
 - 입력은 `전사.md` 와 레포 맨 위 `브랜드_SSOT.md` 뿐. 이미지를 다시 보지 않는다. 먼저 `python3 shared/store_profile.py` 로 채워졌는지 본다 — "비어 있음(템플릿 그대로)" 이면 5절(오늘 고칠 것) 머리에 "브랜드_SSOT.md 가 비어 있어 일반 제안" 이라고 적고 일반 제안으로 채운다(규칙 파일 그대로).
 
 ## 6. 원장 한 줄
-원장 규칙은 루트 CLAUDE.md §3. 장부는 맨 위에 쌓는다. 추가는 `shared/ledger.py` 로만:
+원장 규칙은 루트 CLAUDE.md §3. 장부는 맨 아래에 한 줄씩 덧붙인다. 추가는 `shared/ledger.py` 로만:
 ```bash
 python3 shared/ledger.py output_detail-page/원장.md '{"날짜": "2026-10-14", "가게": "하루양말", "URL": "https://…", "7원칙 요약": "있음 3 · 약함 2 · 없음 2 — 가장 빈 곳: ②상식파괴", "폴더": "20261014_1530_하루양말"}'
 ```

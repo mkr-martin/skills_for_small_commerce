@@ -1,6 +1,6 @@
 ---
 name: reels-reference
-description: 릴스 레퍼런스 분석. 사장님이 "이 릴스 레퍼런스 분석해줘 <인스타 URL>", "이 릴스 왜 터졌어?", "이 릴스 훅 뭐야" 라고 하면 쓴다. 인스타 릴스 영상을 Gemini 에 통째로 보여 주고 훅 유형(6)·오프닝(15)·공식(≤3)·3초 훅 원문·씬 표·태그를 뽑은 뒤, 브랜드_SSOT.md 기준으로 우리 가게용 훅 후보 3개를 만든다. 결과는 output_reels-reference/<yyyymmdd_hhmm>_<코드>/ 폴더와 output_reels-reference/원장.md 한 줄. Gemini API 키가 있어야 한다.
+description: 릴스 레퍼런스 분석. 사장님이 "이 릴스 레퍼런스 분석해줘 <인스타 URL>", "이 릴스 왜 터졌어?", "이 릴스 훅 뭐야" 라고 하면 쓴다. 인스타 릴스 영상을 Gemini 에 통째로 보여 주고 훅 유형(6)·오프닝(14)·공식(≤3)·3초 훅 원문·씬 표·태그를 뽑은 뒤, 브랜드_SSOT.md 기준으로 우리 가게용 훅 후보 3개를 만든다. 결과는 output_reels-reference/<yyyymmdd_hhmm>_<코드>/ 폴더와 output_reels-reference/원장.md 한 줄. Gemini API 키가 있어야 한다.
 ---
 
 # 릴스 레퍼런스 분석
