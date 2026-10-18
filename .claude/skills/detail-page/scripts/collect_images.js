@@ -1,24 +1,49 @@
-// 상세 이미지 주소 모으기 — 내 크롬의 상세페이지 탭에서 실행한다(반자동크롤러 스킬).
-// 크롬 도구의 "스크립트 실행"(evaluate_script)에 이 함수를 통째로 넣는다.
-// 도구가 함수가 아니라 식을 원하면 (async () => { ... })() 처럼 감싸서 넣는다.
+// 생성물 — 하네스 50_code/tools/salespage/collect.js 정본 · sync_skillpack.py · 2026-10-18
+// salespage 층1 수집 판정 — 스킬팩 `detail-page/scripts/collect_images.js` 이식(판정 규칙 동일).
+// 부르는 곳 = `acquire.py` `render_page()` 의 `page.evaluate(<이 파일>, opts)` (공용 레일 `human_browser` — 무인).
+// 판정 근거·실측·알려진 실패 모드 = `salespage/README.md` 「층1 획득」 — 여기 주석은 이식 차이만 적는다.
 //
-// 하는 일: 펼치기 버튼 누르기 → 끝까지 스크롤 → 플랫폼 판별 → 상세 영역 찾기 → 군더더기 이미지 빼기
-// 돌려주는 것: { url, title, platform, branch, images:[{src,w,h}], warnings:[...], ... }
-//   → 이 결과를 그대로 <건 폴더>/수집.json 으로 저장하고 download.py 에 넘긴다.
-// 이 코드는 "정답"이 아니라 출발점이다. 처음 보는 사이트에서 warnings 가 나오면
-// 사람처럼 대응한다 — ladder(조상 사다리)를 보고 상세 영역 셀렉터를 직접 정해 다시 돌린다.
-async () => {
+// 이식 차이 4가지(판정 규칙 자체는 그대로):
+//  (가) 인자 `opts` — `textMaxPx`(= settings.TEXT_BRANCH_MAX_PX · 파이썬과 같은 값) · `forceImages`
+//       (사람이 "상세로" 지정했을 때 텍스트형 조기 반환을 건너뛰고 컨테이너 판정까지 간다).
+//  (나) 펼치기 클릭에서 **다른 페이지로 가는 링크는 누르지 않는다** — 무인 렌더에서 a[href] 를 누르면
+//       페이지가 넘어가 evaluate 문맥이 통째로 사라진다(사람 크롬은 사람이 되돌린다).
+//  (다) `page_text` — 상세 컨테이너를 잠깐 `display:none` 하고 읽은 body innerText = **컨테이너 밖 글**
+//       (옵션 패널·가격 · README 「이미지형 갈래는 페이지 글을 버린다」의 구멍 메우기). 가공 0.
+//  (라) 이미지가 0장인데 forceImages 로 사다리까지 오면 seed 가 없다 — 미판정으로 돌려준다(원본은 이 길이 없었다).
+//  (마) `article` — 본문 컨테이너(①시맨틱 셀렉터 ②밀도 폴백)의 HTML·텍스트·셀렉터 + 블로그 신호(og:type·JSON-LD
+//       원문·<article>·itemprop). 구 acquire.py 인라인 JS 를 흡수(판정 JS 1벌 · 모든 반환 경로에 실린다).
+//       opts `articleSelectors`·`minChars`·`minRatio`·`maxNodes` 기본값 = settings.ARTICLE_* 와 동치(테스트가 대조).
+//  (바) `signals` — 신호 사전 주입. 기본값 = `40_commerce_harness/shared/crawl/signals.json` 의 captcha·blocked 와
+//       동치인 리터럴(스킬팩 독립 실행용 · 5단계 lint 가 동치 강제). 매칭 = 소문자 부분일치.
+async (opts) => {
+  const o = opts || {};
+  const TEXT_MAX = o.textMaxPx || 8000;
+  const SIG = o.signals || {
+    captcha: ["보안문자", "자동입력 방지", "자동 입력 방지", "보안 확인", "security verification", "캡차", "CAPTCHA", "로봇이 아닙", "인증번호"],
+    blocked: ["access denied", "reference #", "잠시 후 다시", "비정상적"],
+  };
+  const ART_SELECTORS = o.articleSelectors || ["article", "[itemprop=\"articleBody\"]", ".article-body", ".post-content",
+    ".entry-content", "[role=\"main\"]", "main"];
+  const ART_MIN_CHARS = o.minChars || 200, ART_MIN_RATIO = o.minRatio || 0.5, ART_MAX_NODES = o.maxNodes || 20000;
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const warnings = [];
 
-  // ① 펼치기 — 네이버는 `상품정보 펼쳐보기`·`상세정보 펼쳐보기` 2개를 다 눌러야 전량.
-  //    한 번 누르면 두 번째가 뒤늦게 생기므로 2패스.
+  // ① 펼치기 — 네이버는 `상품정보 펼쳐보기`·`상세정보 펼쳐보기` 2개를 다 눌러야 전량. 2패스.
   const EXPAND = /펼쳐보기|더보기|상세보기|상세정보|상품\s?설명/;
+  const COLLAPSE = /접기|닫기/;                                      // 펼친 뒤 생기는 `상세정보 접기` 도 `상세정보` 에 걸린다 — 2패스가 도로 접지 않게
+  const navigates = e => {                                          // (나) 다른 문서로 가는 링크인가
+    if (e.tagName !== 'A') return false;
+    const h = (e.getAttribute('href') || '').trim();
+    if (!h || h.startsWith('#') || /^javascript:/i.test(h)) return false;
+    try { const u = new URL(h, location.href); return u.href.split('#')[0] !== location.href.split('#')[0]; }
+    catch (_) { return false; }
+  };
   const expanded = [];
   for (let pass = 0; pass < 2; pass++) {
     const btns = [...document.querySelectorAll('a,button')].filter(e => {
       const t = (e.textContent || '').trim();
-      return t.length < 20 && EXPAND.test(t) && !expanded.includes(t);
+      return t.length < 20 && EXPAND.test(t) && !COLLAPSE.test(t) && !expanded.includes(t) && !navigates(e);
     });
     if (!btns.length) break;
     btns.forEach(e => { try { e.click(); } catch (_) {} expanded.push((e.textContent||'').trim()); });
@@ -34,7 +59,7 @@ async () => {
   }
   window.scrollTo(0, 0); await sleep(400);
 
-  // ③ 플랫폼 지문 6종 — 증거를 그대로 남긴다(판정이 틀렸을 때 왜 틀렸나를 묻기 위해).
+  // ③ 플랫폼 지문 — 증거를 그대로 남긴다(판정이 틀렸을 때 왜 틀렸나를 묻기 위해).
   const head = document.documentElement.outerHTML.slice(0, 40000);
   const F = {
     se_main: document.querySelectorAll('.se-main-container').length,
@@ -47,7 +72,7 @@ async () => {
     next: /_next\//.test(head), nuxt: /__NUXT__/.test(head), vue: /data-v-[0-9a-f]{6,}/.test(head),
     jquery: typeof window.jQuery !== 'undefined',
   };
-  // 아임웹은 `#prod_detail` 이 리뷰를 포함해 **오답** — `.detail_detail_wrap` 이 정답.
+  // 아임웹은 `#prod_detail` 이 리뷰를 포함해 오답 — `.detail_detail_wrap` 이 정답.
   const PLATFORMS = [
     ['네이버 스마트·브랜드스토어', '.se-main-container', F.se_main > 0],
     ['쿠팡', '.product-detail-content', F.coupang_url],
@@ -68,33 +93,68 @@ async () => {
   const OK = i => i.naturalWidth >= 300 && i.naturalHeight >= 200;
   const allImgs = [...document.querySelectorAll('img')].filter(OK);
   const text = (document.body.innerText || '').replace(/\s+/g, ' ').trim();
-  if (/비정상적인 접근|Access Denied|잠시 후 다시|captcha/i.test(text.slice(0, 2000)))
+  const sigHay = (location.href + ' ' + text.slice(0, 2000)).toLowerCase();
+  if ([...(SIG.blocked || []), ...(SIG.captcha || [])].some(w => sigHay.includes(String(w).toLowerCase())))
     warnings.push('차단 문구 — 사람 크롬인지 확인하라');
   const notLoaded = [...document.querySelectorAll('img')].filter(i => i.naturalWidth === 0).length;
   if (notLoaded) warnings.push(`naturalWidth=0 인 img ${notLoaded}개 — 스크롤이 덜 닿았다`);
 
-  // ④ 3분기 — 세로합과 "최장 1장의 비중"만으로. 장수로 판정하면 틀린다
-  //    (5장짜리와 10장짜리가 장수는 2배여도 세로합은 20배 차이 날 수 있다).
-  //    경계는 정수 비교로 — 부동소수로 0.7 을 비교하면 70.0% 가 69.99% 로 떨어진다.
+  // ④ 3분기 — 세로합과 "최장 1장의 비중"만으로(장수로 판정하면 틀린다). 경계는 정수 비교.
   const branch = imgs => {
     const total = imgs.reduce((a, b) => a + (b.h || 0), 0);
-    if (total < 8000) return '텍스트형';
+    if (total < TEXT_MAX) return '텍스트형';
     const maxH = imgs.reduce((a, b) => Math.max(a, b.h || 0), 0);
     return maxH * 10 >= total * 7 ? '단일장문형' : '다중이미지형';
   };
   const allH = allImgs.reduce((a, b) => a + b.naturalHeight, 0);
+  // (마) 본문 컨테이너 — 시맨틱 후보 먼저, 없으면 밀도 폴백(CSS-in-JS SPA 는 시맨틱 태그가 없다).
+  const bodyText = document.body ? document.body.innerText : '';
+  let aEl = null, aVia = '';
+  for (const sel of ART_SELECTORS) {
+    let c = null;
+    try { c = document.querySelector(sel); } catch (_) { continue; }
+    if (c && (c.innerText || '').trim().length >= ART_MIN_CHARS) { aEl = c; aVia = sel; break; }
+  }
+  if (!aEl) {
+    const nodes = document.querySelectorAll('div,section,article,main,td');
+    if (nodes.length <= ART_MAX_NODES) {
+      const need = Math.max(ART_MIN_CHARS, Math.floor(bodyText.trim().length * ART_MIN_RATIO));
+      let best = null, bestLen = Infinity;
+      for (const n of nodes) {                  // 기준 이상 중 가장 작은 것 = 가장 구체적인 본문 컨테이너
+        const len = (n.innerText || '').trim().length;
+        if (len >= need && len < bestLen) { best = n; bestLen = len; }
+      }
+      if (best) { aEl = best; aVia = 'density'; }
+    }
+  }
+  const og = document.querySelector('meta[property="og:type"]');
+  const artTag = document.querySelector('article');
+  const article = {
+    html: aEl ? aEl.innerHTML : '', text: bodyText, selector: aVia, via: aVia,
+    title: document.title || '', container_chars: aEl ? (aEl.innerText || '').trim().length : 0,
+    images: aEl ? [...aEl.querySelectorAll('img')]
+      .map(im => ({ src: im.currentSrc || im.src || '', w: im.naturalWidth || 0, h: im.naturalHeight || 0 }))
+      .filter(x => x.src && !x.src.startsWith('data:')) : [],
+    og_type: og ? (og.getAttribute('content') || '') : '',
+    ld_json: [...document.querySelectorAll('script[type="application/ld+json"]')].map(s => s.textContent || ''),
+    article_el_chars: artTag ? (artTag.innerText || '').trim().length : 0,
+    itemprop_body: !!document.querySelector('[itemprop="articleBody"]'),
+  };
   const base = { url: location.href, title: document.title, platform, fingerprint: F,
-                 text_chars: text.length, text_sample: text.slice(0, 160), expanded };
+                 text_chars: text.length, text_sample: text.slice(0, 160), expanded,
+                 page_text: '', forced: !!o.forceImages, article };
   const EMPTY = { small: 0, aspect1: 0, dup: 0, review: 0 };
-  if (allH < 8000) return { ...base, container: null, branch: '텍스트형', images: [],
+  if (allH < TEXT_MAX && !o.forceImages) return { ...base, container: null, branch: '텍스트형', images: [],
     total_height_px: allH, ladder: [], removed: EMPTY, strips_est: 0,
-    warnings: [...warnings, `텍스트형 — 세로합 ${allH}px < 8,000px. 이미지 전사 말고 페이지 글을 그대로 읽어라`] };
+    warnings: [...warnings, `텍스트형 — 세로합 ${allH}px < ${TEXT_MAX}px. 이미지 전사 말고 페이지 글을 읽는다`] };
+  if (!allImgs.length) return { ...base, container: null, branch: '미판정', images: [],   // (라)
+    total_height_px: 0, ladder: [], removed: EMPTY, strips_est: 0,
+    warnings: [...warnings, '상세로 지정됐지만 300×200 이상 이미지가 0장이다 — 전사할 상세 이미지가 없다'] };
 
-  // ⑤ 사다리 — 지문이 맞았을 때도 **진단용으로 항상** 만든다(지문 선택이 옳았나를 사후에 묻기 위해).
+  // ⑤ 사다리 — 지문이 맞았을 때도 진단용으로 항상 만든다.
   const seed = allImgs.reduce((a, b) => b.naturalHeight > a.naturalHeight ? b : a);
   const chain = []; for (let p = seed.parentElement; p && p !== document.documentElement; p = p.parentElement) chain.push(p);
-  // 이름은 **유일하게 집히는지 DOM 으로 검증**한다. 유일하게 안 집히면 셀렉터가 아니다
-  //    (예: `.MuiBox-root.css-1pu394w` → 의미 있는 이름은 MuiBox-root 뿐인데 그건 수백 개에 붙는다).
+  // 이름은 유일하게 집히는지 DOM 으로 검증한다(유일하게 안 집히면 셀렉터가 아니다).
   const HASHY = /^(css|sc|jsx|emotion)[-_]|[-_][0-9a-f]{6,}$|^[a-z]+-\d+$|\[|^(flex|grid|block|relative|absolute|hidden|w|h|p[xytblr]?|m[xytblr]?|text|bg|border|items|justify|gap|rounded|shadow|twc)([-_].*)?$/i;
   const SEM = new Set(['main','article','section','aside','figure']);
   const nameOf = el => {
@@ -114,9 +174,7 @@ async () => {
     return { el, name: n.name, rank: n.rank, img_count: [...el.querySelectorAll('img')].filter(OK).length }; });
   const ladder = rows.map(r => ({ name: r.name, img_count: r.img_count }));
 
-  // ⑥ 런타임 무릎 — **가장 크게 뛰는 지점 아래**를 채택. n<4 인 안쪽 조상은 건너뛴다.
-  //    "이미지 최다"(body 142장 vs 실제 22장)도 "커버리지 가중 점수"(#wrap 85장 vs 실제 27장)도
-  //       쓰지 않는다 — 둘 다 큰 컨테이너가 항상 이긴다.
+  // ⑥ 런타임 무릎 — 가장 크게 뛰는 지점 아래를 채택. n<4 인 안쪽 조상은 건너뛴다.
   const knee = L => {
     let idx = -1, jump = 1;
     for (let i = 0; i < L.length - 1; i++) {
@@ -125,7 +183,7 @@ async () => {
       if (r > jump) { jump = r; idx = i; }
     }
     if (idx < 0) return { index: -1, jump: 1, tie: [] };
-    // 동수 조상이 여럿이면(=이미지 집합이 같다) id → 의미 클래스 → 해시·유틸 순으로 이름을 고른다.
+    // 동수 조상이 여럿이면 id → 의미 클래스 → 해시·유틸 순으로 이름을 고른다.
     const n = L[idx].img_count, tie = [];
     for (let i = idx; i >= 0 && L[i].img_count === n; i--) tie.unshift(i);
     let pick = idx;
@@ -141,11 +199,10 @@ async () => {
   } else {
     const k = knee(rows);
     if (k.index < 0) {
-      // body 로도, 안쪽 조상으로도 폴백하지 않는다 — 1장만 담긴 조상을 고르면 "성공한 작은 수집"처럼
-      //    보여서 더 위험하다. 0장 + 사다리 + 큰 경고로 **사람을 부른다**.
+      // body 로도, 안쪽 조상으로도 폴백하지 않는다 — 0장 + 사다리 + 경고로 사람을 부른다.
       return { ...base, container: null, branch: '미판정', images: [], total_height_px: 0,
         ladder, removed: EMPTY, strips_est: 0, warnings: [...warnings,
-          `무릎 미검출 — n≥4 이면서 뛰는 지점이 없다. 사다리를 보고 셀렉터를 손으로 넣어라: ${ladder.map(r=>`${r.name}:${r.img_count}`).join(' → ')}`] };
+          `🛑 무릎 미검출 — n≥4 이면서 뛰는 지점이 없다. 🧑 사다리를 보고 셀렉터를 손으로 넣어라: ${ladder.map(r=>`${r.name}:${r.img_count}`).join(' → ')}`] };
     } else {
       const row = rows[k.index]; el = row.el;
       if (row.rank >= 1) container = row.name;
@@ -155,18 +212,25 @@ async () => {
     }
   }
 
-  // ⑦ 오염 제거 3종 — 순서대로 걸러 **서로 겹치지 않게** 센다.
-  //    비교 키만 쿼리를 떼고 src 는 원문 그대로 — `_next/image?url=…` 는 쿼리가 본체다.
+  // ⑦ 오염 제거 3종 — 순서대로 걸러 서로 겹치지 않게 센다. 비교 키만 쿼리를 떼고 src 는 원문 그대로.
   const picked = [...el.querySelectorAll('img')]
     .map(i => ({ src: i.currentSrc || i.src || '', w: i.naturalWidth, h: i.naturalHeight }))
     .filter(x => /^https?:/.test(x.src));
   const removed = { small: 0, aspect1: 0, dup: 0, review: 0 }, nearSq = [];
   let keep = picked.filter(x => (x.w >= 300 && x.h >= 200) || (removed.small++, false));
-  keep = keep.filter(x => {                                        // 종횡비 정확히 1.00 = 추천 썸네일
-    if (x.w > 0 && x.h === x.w) { removed.aspect1++; return false; }
+  const sq = (x, y) => x.w > 0 && x.h === x.w && y.w === x.w && y.h === x.h;   // 같은 크기 정사각
+  const gone = new Set(), dropped = [];
+  for (let i = 0; i < keep.length;) {                              // 같은 크기 정사각이 3장 이상 연속 = 추천 썸네일 그리드
+    let j = i + 1; while (j < keep.length && sq(keep[i], keep[j])) j++;
+    if (keep[i].w > 0 && keep[i].h === keep[i].w && j - i >= 3) for (let k = i; k < j; k++) gone.add(k);
+    i = j;
+  }
+  keep = keep.filter((x, k) => {
+    if (gone.has(k)) { removed.aspect1++; dropped.push(x.src); return false; }
     if (x.w > 0 && Math.abs(x.h / x.w - 1) <= 0.02) nearSq.push(`${x.w}x${x.h}`);
     return true;
   });
+  if (dropped.length) warnings.push(`정사각 썸네일 그리드로 보고 ${dropped.length}장 제거: ${dropped.join(', ')}`);
   const seen = new Set();
   keep = keep.filter(x => {                                        // URL 중복 = 캐러셀 반복 노출
     const key = x.src.split('?')[0];
@@ -174,15 +238,20 @@ async () => {
   });
   keep = keep.filter(x => !/review|PRODUCTREVIEW/i.test(x.src) || (removed.review++, false));
 
-  if (nearSq.length) warnings.push(`정사각 ±2% 인 이미지 ${nearSq.length}장 — 규칙은 "정확히 1.00"뿐이라 남겼다: ${nearSq.slice(0,6).join(', ')}`);
+  if (nearSq.length) warnings.push(`정사각 ±2% 인 이미지 ${nearSq.length}장 — 규칙은 "같은 크기 정사각 3장+ 연속"뿐이라 남겼다: ${nearSq.slice(0,6).join(', ')}`);
   if (keep.some(x => x.src.includes('?'))) warnings.push('쿼리가 붙은 src 가 있다(_next/image 등) — 쿼리를 떼면 못 받는다');
   if (!keep.length) warnings.push('오염 제거 후 0장 — 컨테이너가 틀렸다');
   const totalH = keep.reduce((a, b) => a + b.h, 0);
-  // 전사 비용의 **상한** = Σ ceil(장별 세로 / 1360). 총합을 한 번에 나누면 29% 과소,
-  //    이 식은 20% 안팎 과대 — 정확값은 slice.py 결과뿐. 여기선 상한으로 족하다.
+  // 전사 비용의 상한 = Σ ceil(장별 세로 / 1360). 정확값은 transcribe.slice_tall 뿐.
   const strips = keep.reduce((a, b) => a + Math.ceil(b.h / 1360), 0);
-  if (strips > 60) warnings.push(`예상 ${strips}스트립(상한) — 60 초과. 전사 전에 사람에게 확인받아라`);
+  if (strips > 60) warnings.push(`예상 ${strips}스트립(상한) — 60 초과. 🧑 전사 전에 사람에게 확인받아라`);
 
-  return { ...base, container, branch: branch(keep), images: keep,
+  // (다) 페이지 글 = 상세 컨테이너 밖 innerText — 컨테이너를 잠깐 숨기고 읽은 뒤 되돌린다.
+  const prevDisplay = el.style.getPropertyValue('display'), prevPrio = el.style.getPropertyPriority('display');
+  el.style.setProperty('display', 'none', 'important');
+  const pageText = document.body.innerText || '';
+  if (prevDisplay) el.style.setProperty('display', prevDisplay, prevPrio); else el.style.removeProperty('display');
+
+  return { ...base, page_text: pageText, container, branch: branch(keep), images: keep,
            total_height_px: totalH, ladder, removed, strips_est: strips, warnings };
 }
